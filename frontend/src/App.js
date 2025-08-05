@@ -29,13 +29,20 @@ function App() {
 
       setResults(response.data.results || []);
       setSummary(response.data.summary || []);
-    } catch (err) {
-      setError('Error searching contributions: ' + (err.response?.data?.detail || err.message));
-      setResults([]);
-      setSummary([]);
-    } finally {
-      setLoading(false);
-    }
+      } catch (err) {
+          console.error('Full error:', err);
+          console.error('Error response:', err.response?.data);
+
+          // Check if no results found
+          if (err.response?.data?.summary?.every(item => item.matches_found === 0)) {
+            const notFoundNames = err.response.data.summary.map(item => item.search_term).join(', ');
+            setError(`No contributions found for: ${notFoundNames}`);
+          } else {
+            setError('Error searching contributions: ' + JSON.stringify(err.response?.data || err.message));
+          }
+      } finally {
+          setLoading(false);
+      }
   };
 
   const exportToCsv = () => {

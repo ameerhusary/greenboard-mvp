@@ -26,16 +26,16 @@ ChartJS.register(
 const Charts = ({ results }) => {
   if (!results || results.length === 0) return null;
 
-  // 1. Contributions over time (by person)
+  // 1. Contributions over time (by person with city)
   const getTimelineData = () => {
     const personData = {};
     
     results.forEach(result => {
       const date = result.TRANSACTION_DT;
-      const personKey = `${result.search_term || 'Unknown'}`;
+      // Group by first_name, last_name, city combination
+      const personKey = `${result.search_term} (${result.CITY}, ${result.STATE})`;
       
       if (date && date.length === 8) {
-        // Convert MMDDYYYY to YYYY-MM format for grouping
         const year = date.substring(4);
         const month = date.substring(0, 2);
         const yearMonth = `${year}-${month}`;
@@ -57,17 +57,21 @@ const Charts = ({ results }) => {
     });
     const sortedDates = Array.from(allDates).sort();
 
-    // Create datasets for each person
-    const colors = [
-      'rgb(75, 192, 192)', 'rgb(255, 99, 132)', 'rgb(54, 162, 235)', 
-      'rgb(255, 205, 86)', 'rgb(153, 102, 255)', 'rgb(255, 159, 64)'
-    ];
+    // Generate consistent colors for each person
+    const generatePersonColor = (personKey, index) => {
+      const colors = [
+        'rgb(75, 192, 192)', 'rgb(255, 99, 132)', 'rgb(54, 162, 235)', 
+        'rgb(255, 205, 86)', 'rgb(153, 102, 255)', 'rgb(255, 159, 64)',
+        'rgb(199, 199, 199)', 'rgb(83, 102, 146)', 'rgb(255, 99, 255)', 'rgb(99, 255, 132)'
+      ];
+      return colors[index % colors.length];
+    };
     
     const datasets = Object.keys(personData).map((person, index) => ({
       label: person,
       data: sortedDates.map(date => personData[person][date] || 0),
-      borderColor: colors[index % colors.length],
-      backgroundColor: colors[index % colors.length].replace('rgb', 'rgba').replace(')', ', 0.2)'),
+      borderColor: generatePersonColor(person, index),
+      backgroundColor: generatePersonColor(person, index).replace('rgb', 'rgba').replace(')', ', 0.2)'),
       tension: 0.1
     }));
     
@@ -80,40 +84,55 @@ const Charts = ({ results }) => {
     };
   };
 
-  // 2. Top recipients (by committee ID)
+  // 2. Top recipients (color-coded by contributor)
   const getRecipientsData = () => {
     const recipients = {};
+    const contributorColors = {};
     
+    // First pass: collect all contributors and assign colors
+    const uniqueContributors = [...new Set(results.map(r => `${r.search_term} (${r.CITY}, ${r.STATE})`))];
+    const colors = [
+      'rgba(75, 192, 192, 0.8)', 'rgba(255, 99, 132, 0.8)', 'rgba(54, 162, 235, 0.8)', 
+      'rgba(255, 205, 86, 0.8)', 'rgba(153, 102, 255, 0.8)', 'rgba(255, 159, 64, 0.8)',
+      'rgba(199, 199, 199, 0.8)', 'rgba(83, 102, 146, 0.8)', 'rgba(255, 99, 255, 0.8)', 'rgba(99, 255, 132, 0.8)'
+    ];
+    
+    uniqueContributors.forEach((contributor, index) => {
+      contributorColors[contributor] = colors[index % colors.length];
+    });
+    
+    // Group by recipient and track which contributors gave to each
     results.forEach(result => {
       const cmte = result.CMTE_ID || 'Unknown';
+      const contributor = `${result.search_term} (${result.CITY}, ${result.STATE})`;
+      
       if (!recipients[cmte]) {
-        recipients[cmte] = 0;
+        recipients[cmte] = { total: 0, contributors: {} };
       }
-      recipients[cmte] += Number(result.TRANSACTION_AMT || 0);
+      if (!recipients[cmte].contributors[contributor]) {
+        recipients[cmte].contributors[contributor] = 0;
+      }
+      
+      const amount = Number(result.TRANSACTION_AMT || 0);
+      recipients[cmte].total += amount;
+      recipients[cmte].contributors[contributor] += amount;
     });
 
     // Get top 10 recipients
     const sortedRecipients = Object.entries(recipients)
-      .sort(([,a], [,b]) => b - a)
+      .sort(([,a], [,b]) => b.total - a.total)
       .slice(0, 10);
+
+    // Create stacked bar chart data
+    const datasets = uniqueContributors.map(contributor => ({
+      label: contributor,
+      data: sortedRecipients.map(([cmte, data]) => data.contributors[contributor] || 0),
+      backgroundColor: contributorColors[contributor]
+    }));
 
     return {
       labels: sortedRecipients.map(([cmte]) => cmte.substring(0, 15) + '...'),
-      datasets: [{
-        data: sortedRecipients.map(([, amount]) => amount),
-        backgroundColor: [
-          'rgba(255, 99, 132, 0.8)',
-          'rgba(54, 162, 235, 0.8)',
-          'rgba(255, 205, 86, 0.8)',
-          'rgba(75, 192, 192, 0.8)',
-          'rgba(153, 102, 255, 0.8)',
-          'rgba(255, 159, 64, 0.8)',
-          'rgba(199, 199, 199, 0.8)',
-          'rgba(83, 102, 146, 0.8)',
-          'rgba(255, 99, 255, 0.8)',
-          'rgba(99, 255, 132, 0.8)'
-        ]
-      }]
+      datasets
     };
   };
 
@@ -128,11 +147,15 @@ const Charts = ({ results }) => {
     responsive: true,
     plugins: {
       legend: {
-        display: false  // Hide legend since committee names are on x-axis
+        position: 'top'  // Show legend to identify contributors
       }
     },
     scales: {
+      x: {
+        stacked: true
+      },
       y: {
+        stacked: true,
         beginAtZero: true,
         ticks: {
           callback: function(value) {
@@ -155,13 +178,13 @@ const Charts = ({ results }) => {
       
       {/* Timeline Chart */}
       <div className="chart-container">
-        <h4>Contributions Over Time (by Person)</h4>
+        <h4>Contributions Over Time (by Person & Location)</h4>
         <Line data={timelineData} options={recipientsChartOptions} />
       </div>
 
       {/* Recipients Chart */}
       <div className="chart-container">
-        <h4>Top Recipients (Total from All Contributors)</h4>
+        <h4>Top Recipients (Stacked by Contributor)</h4>
         <Bar data={recipientsData} options={recipientsChartOptions} />
       </div>
 
