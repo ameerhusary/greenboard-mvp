@@ -206,3 +206,72 @@
   background: #f8f9fa;
   border-radius: 8px;
 }
+
+.charts-section {
+  margin-top: 40px;
+  padding-top: 30px;
+  border-top: 2px solid #f0f0f0;
+}
+
+.chart-container {
+  margin-bottom: 40px;
+  background: white;
+  padding: 20px;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.chart-container h4 {
+  margin-bottom: 20px;
+  color: #333;
+}
+
+.largest-contributions h4 {
+  margin-bottom: 20px;
+  color: #333;
+}
+
+.large-contributions-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 15px;
+}
+
+.large-contribution-card {
+  background: linear-gradient(135deg, #ff6b6b, #feca57);
+  color: white;
+  padding: 20px;
+  border-radius: 8px;
+  position: relative;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+}
+
+.contribution-rank {
+  position: absolute;
+  top: 10px;
+  right: 15px;
+  font-size: 24px;
+  font-weight: bold;
+  opacity: 0.8;
+}
+
+.contribution-amount {
+  font-size: 28px;
+  font-weight: bold;
+  margin-bottom: 10px;
+}
+
+.contribution-details div {
+  margin-bottom: 4px;
+}
+
+.contribution-date {
+  font-size: 14px;
+  opacity: 0.9;
+}
+
+.contribution-recipient {
+  font-size: 12px;
+  opacity: 0.8;
+  margin-top: 5px;
+}

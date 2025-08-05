@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import axios from 'axios';
 import './App.css';
+import Charts from './Charts';
 
 function App() {
   const [searchInput, setSearchInput] = useState('');
@@ -167,6 +168,7 @@ function App() {
             Enter names above to search for political contributions
           </div>
         )}
+        {results.length > 0 && <Charts results={results} />}
       </main>
     </div>
   );
