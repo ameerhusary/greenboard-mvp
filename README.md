@@ -32,8 +32,8 @@ A web application that helps financial services firms monitor political contribu
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/yourusername/political-contribution-monitor.git
-   cd political-contribution-monitor
+   git clone https://github.com/ameerhusary/greenboard-mvp.git
+   cd greenboard-mvp
    ```
 
 2. **Install Python dependencies**
@@ -134,9 +134,9 @@ curl -X POST "http://localhost:8000/bulk_search" \
 - Frontend features: Update `App.js` or create new components
 - Visualizations: Modify `Charts.js`
 
-## Deployment Notes
+## Future Development
 
-For production deployment:
+For future development:
 - Use PostgreSQL or similar database instead of in-memory pandas
 - Implement proper authentication and rate limiting
 - Add error logging and monitoring
