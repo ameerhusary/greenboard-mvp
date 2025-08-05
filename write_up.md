@@ -68,10 +68,14 @@ Built a full-stack web application for monitoring political contributions to ens
 ## Production Scaling Strategy
 
 ### 1. **Data Layer**
-- **Database**: PostgreSQL with indexed tables for contributors and contributions
+- **Database**: PostgreSQL with composite indexes on (first_name, last_name, city) for primary search patterns
 - **Caching**: Redis for frequently searched names and results
 - **Data Pipeline**: Automated ETL process for new FEC data releases
-- **Partitioning**: Partition contribution data by year/state for query performance
+- **Partitioning**: Partition by year/state rather than name/city because:
+  - **Even distribution**: Names are highly skewed (many "John Smith"s vs few "Xerxes Zamboni"s)
+  - **Time-based queries**: "Show 2023 contributions" benefits from year partitioning
+  - **Maintenance**: Easier to archive old years, manage state-specific compliance rules
+  - **Indexes still work**: Composite B-tree indexes on (first_name, last_name, city) provide fast lookups within partitions
 
 ### 2. **Application Architecture**
 - **Containerization**: Docker containers for consistent deployment
@@ -80,16 +84,20 @@ Built a full-stack web application for monitoring political contributions to ens
 - **Microservices**: Separate services for search, analytics, and user management
 
 ### 3. **Performance Optimization**
-- **Elasticsearch**: Full-text search engine for complex name matching
+- **PostgreSQL-First Approach**: Optimized with composite indexes and full-text search capabilities
+- **Optional Elasticsearch**: Only if advanced fuzzy matching becomes critical (cost/complexity: PostgreSQL << PostgreSQL + ES << NoSQL + ES)
 - **Background Jobs**: Celery for bulk processing and report generation
 - **CDN**: Static asset delivery and API response caching
 - **Database Optimization**: Read replicas, connection pooling, query optimization
 
 ### 4. **Security & Compliance**
 - **Authentication**: OAuth2/JWT with role-based access control
-- **Audit Logging**: Track all searches for compliance reporting
-- **Data Encryption**: Encrypt sensitive data at rest and in transit
-- **GDPR Compliance**: Data retention policies and user privacy controls
+- **Audit Logging**: Track all searches for regulatory compliance (SEC, FINRA require firms to monitor employee political activities)
+- **Data Encryption**: 
+  - **At rest**: AES-256 encryption for database storage
+  - **In transit**: TLS 1.3 for all API communications
+  - **Application level**: bcrypt for password hashing, encrypted JWT tokens
+- **GDPR Compliance**: EU General Data Protection Regulation - requires data retention policies, user privacy controls, and "right to be forgotten" for EU citizens' personal data
 
 ### 5. **Monitoring & Operations**
 - **APM**: Application performance monitoring (DataDog, New Relic)
@@ -100,9 +108,16 @@ Built a full-stack web application for monitoring political contributions to ens
 ### 6. **Scalability Considerations**
 - **Horizontal Scaling**: Auto-scaling groups based on CPU/memory usage
 - **Database Sharding**: Distribute data across multiple database instances
-- **Event-Driven Architecture**: Message queues for asynchronous processing
-- **Global Distribution**: Multi-region deployment for international users
+- **Event-Driven Architecture**: Message queues for asynchronous processing of:
+  - Bulk search requests for 1000+ names
+  - Daily/weekly compliance report generation
+  - New FEC data ingestion and processing
+  - Email notifications for flagged contributions
+- **Multi-Region Deployment**: Not needed initially since US political contributions are domestic, but useful for:
+  - Disaster recovery and business continuity
+  - Reduced latency for firms with offices across US time zones
+  - Compliance with state-level data residency requirements
 
 ## Conclusion
 
-The current MVP successfully demonstrates core functionality within the 24-hour timeframe while making pragmatic trade-offs for rapid development. The modular architecture provides a solid foundation for scaling to production-grade requirements with proper database infrastructure, security measures, and operational tooling.
+The current MVP successfully demonstrates core functionality within the timeframe while making pragmatic trade-offs for rapid development. The modular architecture provides a solid foundation for scaling to production-grade requirements with proper database infrastructure, security measures, and operational tooling.
