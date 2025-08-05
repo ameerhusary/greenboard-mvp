@@ -1,0 +1,7 @@
+data/*.txt
+__pycache__/
+*.pyc
+.env
+node_modules/
+frontend/build/
+.DS_Store
