@@ -26,19 +26,18 @@ ChartJS.register(
 const Charts = ({ results, getPersonGroupColor }) => {
   if (!results || results.length === 0) return null;
 
-  // CHANGE 2: Update generatePersonColor function to use the consistent color function
-  const generatePersonColor = (personKey) => {
-    const parts = personKey.split(' (')[0].split(' '); // Extract "FirstName LastName" from "FirstName LastName (City, State)"
-    const city = personKey.split('(')[1]?.split(',')[0]; // Extract city
-    
-    if (parts.length >= 2 && city) {
-      const color = getPersonGroupColor(parts[0], parts[1], city);
-      // Convert rgba to rgb for border colors
-      return color.replace('rgba', 'rgb').replace(', 0.3)', ')');
+  // CHANGED: Helper function to get person key for consistent grouping
+  const getPersonKey = (result) => {
+    if (result.PERSON_GROUP_ID) {
+      return result.PERSON_GROUP_ID.toLowerCase();
     }
-    
-    // Fallback color if parsing fails
-    return 'rgb(75, 192, 192)';
+    // Fallback to raw fields if PERSON_GROUP_ID is missing
+    return `${result.FIRST_NAME_RAW || ''}_${result.LAST_NAME_RAW || ''}_${result.CITY || ''}_${result.STATE || ''}`.toLowerCase();
+  };
+
+  // CHANGED: Helper function to convert rgba to rgb
+  const convertToRgb = (rgbaColor) => {
+    return rgbaColor.replace('rgba', 'rgb').replace(', 0.3)', ')');
   };
 
   // 1. Contributions over time (by person with city)
@@ -47,8 +46,8 @@ const Charts = ({ results, getPersonGroupColor }) => {
     
     results.forEach(result => {
       const date = result.TRANSACTION_DT;
-      // Group by first_name, last_name, city combination
-      const personKey = `${result.search_term} (${result.CITY}, ${result.STATE})`;
+      // CHANGED: Use consistent person grouping
+      const personKey = getPersonKey(result);
       
       if (date && date.length === 8) {
         const year = date.substring(4);
@@ -72,21 +71,15 @@ const Charts = ({ results, getPersonGroupColor }) => {
     });
     const sortedDates = Array.from(allDates).sort();
 
-    // Generate consistent colors for each person
-    const generatePersonColor = (personKey, index) => {
-      const colors = [
-        'rgb(75, 192, 192)', 'rgb(255, 99, 132)', 'rgb(54, 162, 235)', 
-        'rgb(255, 205, 86)', 'rgb(153, 102, 255)', 'rgb(255, 159, 64)',
-        'rgb(199, 199, 199)', 'rgb(83, 102, 146)', 'rgb(255, 99, 255)', 'rgb(99, 255, 132)'
-      ];
-      return colors[index % colors.length];
-    };
-    
-    const datasets = Object.keys(personData).map((person, index) => {
-      const color = generatePersonColor(person, index) || 'rgb(75, 192, 192)';
+    // CHANGED: Use consistent color function for datasets
+    const datasets = Object.keys(personData).map((personKey) => {
+      // Find a result for this person to get consistent color
+      const sampleResult = results.find(r => getPersonKey(r) === personKey);
+      const color = sampleResult ? convertToRgb(getPersonGroupColor(sampleResult)) : 'rgb(75, 192, 192)';
+      
       return {
-        label: person,
-        data: sortedDates.map(date => personData[person][date] || 0),
+        label: personKey,
+        data: sortedDates.map(date => personData[personKey][date] || 0),
         borderColor: color,
         backgroundColor: color.replace('rgb', 'rgba').replace(')', ', 0.2)'),
         tension: 0.1
@@ -107,24 +100,19 @@ const Charts = ({ results, getPersonGroupColor }) => {
     const recipients = {};
     const contributorColors = {};
     
-    // Assign colors using the consistent function
-    const uniqueContributors = [...new Set(results.map(r => `${r.search_term} (${r.CITY}, ${r.STATE})`))];
+    // CHANGED: Get unique contributors using consistent grouping and assign colors
+    const uniqueContributors = [...new Set(results.map(r => getPersonKey(r)))];
     
-    uniqueContributors.forEach((contributor) => {
-      const parts = contributor.split(' (')[0].split(' ');
-      const city = contributor.split('(')[1]?.split(',')[0];
-      
-      if (parts.length >= 2 && city) {
-        contributorColors[contributor] = getPersonGroupColor(parts[0], parts[1], city);
-      } else {
-        contributorColors[contributor] = 'rgba(75, 192, 192, 0.8)'; // fallback
-      }
+    uniqueContributors.forEach((personKey) => {
+      // Find a result for this person to get consistent color
+      const sampleResult = results.find(r => getPersonKey(r) === personKey);
+      contributorColors[personKey] = sampleResult ? getPersonGroupColor(sampleResult) : 'rgba(75, 192, 192, 0.8)';
     });
     
     // Group by recipient and track which contributors gave to each
     results.forEach(result => {
       const cmte = result.CMTE_ID || 'Unknown';
-      const contributor = `${result.search_term} (${result.CITY}, ${result.STATE})`;
+      const contributor = getPersonKey(result);
       
       if (!recipients[cmte]) {
         recipients[cmte] = { total: 0, contributors: {} };
@@ -186,8 +174,6 @@ const Charts = ({ results, getPersonGroupColor }) => {
     }
   };
 
-  // You may want to define timelineChartOptions similarly, or reuse recipientsChartOptions
-
   const timelineData = getTimelineData();
   const recipientsData = getRecipientsData();
   const largestContributions = getLargestContributions();
@@ -212,24 +198,29 @@ const Charts = ({ results, getPersonGroupColor }) => {
       <div className="largest-contributions">
         <h4>🔥 Largest Contributions</h4>
         <div className="large-contributions-grid">
-          {largestContributions.map((contribution, index) => (
-            <div key={index} className="large-contribution-card">
-              <div className="contribution-rank">#{index + 1}</div>
-              <div className="contribution-amount">
-                ${Number(contribution.TRANSACTION_AMT || 0).toLocaleString()}
-              </div>
-              <div className="contribution-details">
-                <div><strong>{contribution.NAME}</strong></div>
-                <div>{contribution.CITY}, {contribution.STATE}</div>
-                <div className="contribution-date">
-                  {contribution.TRANSACTION_DT ? 
-                    `${contribution.TRANSACTION_DT.substring(0,2)}/${contribution.TRANSACTION_DT.substring(2,4)}/${contribution.TRANSACTION_DT.substring(4)}` 
-                    : 'N/A'}
+          {largestContributions.map((contribution, index) => {
+            // CHANGED: Apply consistent colors to largest contributions cards
+            const bgColor = getPersonGroupColor(contribution);
+            
+            return (
+              <div key={index} className="large-contribution-card" style={{ backgroundColor: bgColor }}>
+                <div className="contribution-rank">#{index + 1}</div>
+                <div className="contribution-amount">
+                  ${Number(contribution.TRANSACTION_AMT || 0).toLocaleString()}
                 </div>
-                <div className="contribution-recipient">→ {contribution.CMTE_ID}</div>
+                <div className="contribution-details">
+                  <div><strong>{contribution.NAME}</strong></div>
+                  <div>{contribution.CITY}, {contribution.STATE}</div>
+                  <div className="contribution-date">
+                    {contribution.TRANSACTION_DT ? 
+                      `${contribution.TRANSACTION_DT.substring(0,2)}/${contribution.TRANSACTION_DT.substring(2,4)}/${contribution.TRANSACTION_DT.substring(4)}` 
+                      : 'N/A'}
+                  </div>
+                  <div className="contribution-recipient">→ {contribution.CMTE_ID}</div>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>
