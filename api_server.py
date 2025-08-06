@@ -1,11 +1,11 @@
 # api_server.py
-
 from fastapi import FastAPI
 from pydantic import BaseModel
 import pandas as pd
 from typing import List, Optional
 from search_engine import ContributionSearchEngine 
 from fastapi.middleware.cors import CORSMiddleware
+import threading
 
 app = FastAPI(title="Political Contribution Search API")
 
@@ -18,9 +18,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Load once at server startup
-search_engine = ContributionSearchEngine()
+# Thread-local storage for search engines
+thread_local = threading.local()
 
+def get_search_engine():
+    if not hasattr(thread_local, 'search_engine'):
+        thread_local.search_engine = ContributionSearchEngine(db_path="my_contributions.db")
+    return thread_local.search_engine
 
 # ---- Pydantic request models ----
 class SearchRequest(BaseModel):
@@ -29,28 +33,26 @@ class SearchRequest(BaseModel):
     city: Optional[str] = None
     limit: int = 10
 
-
 class BulkSearchRequest(BaseModel):
     names: List[str]  # e.g. ["John Smith", "Jane Doe"]
     city: Optional[str] = None
     limit: int = 10
 
-
 @app.get("/")
 def root():
     return {"status": "running"}
 
-
 @app.post("/search")
 def search(req: SearchRequest):
+    search_engine = get_search_engine()
     results = search_engine.search(req.first_name, req.last_name, req.city, req.limit)
     # Replace NaN with None for JSON serialization
     results = results.where(pd.notnull(results), None)
     return results.to_dict(orient="records")
 
-
 @app.post("/bulk_search")
 def bulk_search(req: BulkSearchRequest):
+    search_engine = get_search_engine()
     names_string = ", ".join(req.names)
     results, summary = search_engine.bulk_search(names_string, req.city, req.limit)
     # Replace NaN with None for JSON serialization

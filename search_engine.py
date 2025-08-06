@@ -1,42 +1,137 @@
 from typing import Union
 from extract_data import FECDataExtractor
 import pandas as pd
+import sqlite3
+import os
 
 
 class ContributionSearchEngine:
-    def __init__(self):
+    def __init__(self, use_sqlite=True, db_path="contributions.db"):
+        self.use_sqlite = use_sqlite
+        self.db_path = db_path
         self.extractor = FECDataExtractor()
-        self.df = self.extractor.load_data()
         
-        # Pre-split NAME into FIRST/LAST  for faster lookup
+        if self.use_sqlite and os.path.exists(self.db_path):
+            self.conn = sqlite3.connect(self.db_path)
+        else:
+            self.df = self.extractor.load_data()
+            if self.use_sqlite:
+                self._create_sqlite_db()
+            else:
+                # Pre-split NAME into FIRST/LAST for faster lookup
+                name_split = self.df['NAME'].fillna('').str.split(',', n=1, expand=True)
+                self.df['LAST_NAME_RAW'] = name_split[0].str.strip().str.lower()
+                self.df['FIRST_NAME_RAW'] = name_split[1].str.strip().str.lower()
+
+    def _create_sqlite_db(self):
+        self.conn = sqlite3.connect(self.db_path)
+        
+        # Add processed name columns
         name_split = self.df['NAME'].fillna('').str.split(',', n=1, expand=True)
-        self.df['LAST_NAME_RAW']  = name_split[0].str.strip().str.lower()
+        self.df['LAST_NAME_RAW'] = name_split[0].str.strip().str.lower()
         self.df['FIRST_NAME_RAW'] = name_split[1].str.strip().str.lower()
+        
+        # Create table with indexes
+        self.df.to_sql('contributions', self.conn, if_exists='replace', index=False)
+        
+        # Create indexes for faster searches
+        cursor = self.conn.cursor()
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_last_name ON contributions(LAST_NAME_RAW)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_first_name ON contributions(FIRST_NAME_RAW)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_city ON contributions(CITY)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_names ON contributions(LAST_NAME_RAW, FIRST_NAME_RAW)')
+        self.conn.commit()
 
     def search(self, first_name: str, last_name: str, city: str = None, limit=10) -> pd.DataFrame:
         if not first_name.strip() or not last_name.strip():
             return pd.DataFrame()
-        df = self.df
-
-        if city:
-            city_clean = city.strip().upper()
-            df = df[df['CITY'].fillna('').str.upper() == city_clean]
         
-        return self._multi_strategy_search(df, first_name, last_name, limit)
+        if self.use_sqlite:
+            return self._sqlite_search(first_name, last_name, city, limit)
+        else:
+            df = self.df
+            if city:
+                city_clean = city.strip().upper()
+                df = df[df['CITY'].fillna('').str.upper() == city_clean]
+            return self._multi_strategy_search(df, first_name, last_name, limit)
+
+    def _sqlite_search(self, first_name: str, last_name: str, city: str = None, limit=10) -> pd.DataFrame:
+        first_clean = first_name.strip().lower()
+        last_clean = last_name.strip().lower()
+        
+        city_filter = ""
+        params = [first_clean, last_clean]
+        if city:
+            city_filter = "AND UPPER(CITY) = UPPER(?)"
+            params.append(city.strip())
+        
+        # Strategy 1: exact match
+        query = f"""
+        SELECT * FROM contributions 
+        WHERE FIRST_NAME_RAW = ? AND LAST_NAME_RAW = ? {city_filter}
+        LIMIT ?
+        """
+        params.append(limit)
+        result = pd.read_sql_query(query, self.conn, params=params)
+        if not result.empty:
+            return result
+        
+        # Strategy 2: initial match
+        params = [last_clean]
+        if city:
+            params.append(city.strip())
+        if len(first_clean) <= 2:
+            initial_char = first_clean.replace('.', '')
+            query = f"""
+            SELECT * FROM contributions 
+            WHERE LAST_NAME_RAW = ? AND FIRST_NAME_RAW LIKE ? {city_filter}
+            LIMIT ?
+            """
+            params.insert(1, f"{initial_char}%")
+            params.append(limit)
+            result = pd.read_sql_query(query, self.conn, params=params)
+            if not result.empty:
+                return result
+        
+        # Strategy 3: partial match
+        params = [f"%{first_clean}%", f"%{last_clean}%"]
+        if city:
+            params.append(city.strip())
+        query = f"""
+        SELECT * FROM contributions 
+        WHERE FIRST_NAME_RAW LIKE ? AND LAST_NAME_RAW LIKE ? {city_filter}
+        LIMIT ?
+        """
+        params.append(limit)
+        result = pd.read_sql_query(query, self.conn, params=params)
+        if not result.empty:
+            return result
+        
+        # Strategy 4: fuzzy fallback
+        params = [last_clean, f"%{first_clean}%"]
+        if city:
+            params.append(city.strip())
+        query = f"""
+        SELECT * FROM contributions 
+        WHERE LAST_NAME_RAW = ? AND FIRST_NAME_RAW LIKE ? {city_filter}
+        LIMIT ?
+        """
+        params.append(limit)
+        return pd.read_sql_query(query, self.conn, params=params)
 
     def _multi_strategy_search(self, df, first_name, last_name, limit):
         first_clean = first_name.strip().lower()
-        last_clean  = last_name.strip().lower()
+        last_clean = last_name.strip().lower()
         
         # Strategy 1: exact match on raw-split columns
         exact = df[
             (df['FIRST_NAME_RAW'] == first_clean) &
-            (df['LAST_NAME_RAW']  == last_clean)
+            (df['LAST_NAME_RAW'] == last_clean)
         ]
         if not exact.empty:
             return exact.head(limit)
         
-        # Strategy 2: initial match  (e.g.  "J."  with last name slice)
+        # Strategy 2: initial match (e.g. "J." with last name slice)
         if len(first_clean) <= 2:  # treat 1–2 chars as initial
             initial_char = first_clean.replace('.', '')
             starts = df[
@@ -49,7 +144,7 @@ class ContributionSearchEngine:
         # Strategy 3: partial match for middle names/suffixes
         contains = df[
             (df['FIRST_NAME_RAW'].str.contains(first_clean, na=False)) &
-            (df['LAST_NAME_RAW'] .str.contains(last_clean,  na=False))
+            (df['LAST_NAME_RAW'].str.contains(last_clean, na=False))
         ]
         if not contains.empty:
             return contains.head(limit)
@@ -107,6 +202,11 @@ class ContributionSearchEngine:
         results[available].to_csv(filename, index=False)
         print(f"Exported {len(results)} results to {filename}")
         return True
+
+    def __del__(self):
+        if hasattr(self, 'conn') and self.use_sqlite:
+            self.conn.close()
+
 
 def main():
     search_engine = ContributionSearchEngine()
