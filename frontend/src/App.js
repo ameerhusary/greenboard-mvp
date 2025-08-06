@@ -11,6 +11,25 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
+  const getPersonGroupColor = (firstName, lastName, city) => {
+  const personKey = `${firstName}_${lastName}_${city}`;
+  const colors = [
+    'rgba(75, 192, 192, 0.3)', 'rgba(255, 99, 132, 0.3)', 'rgba(54, 162, 235, 0.3)', 
+    'rgba(255, 205, 86, 0.3)', 'rgba(153, 102, 255, 0.3)', 'rgba(255, 159, 64, 0.3)',
+    'rgba(199, 199, 199, 0.3)', 'rgba(83, 102, 146, 0.3)', 'rgba(255, 99, 255, 0.3)', 'rgba(99, 255, 132, 0.3)'
+  ];
+  
+  // Simple hash function to consistently assign colors
+  let hash = 0;
+  for (let i = 0; i < personKey.length; i++) {
+    const char = personKey.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32-bit integer
+  }
+  
+  return colors[Math.abs(hash) % colors.length];
+  };
+
   const handleSearch = async () => {
     if (!searchInput.trim()) {
       setError('Please enter at least one name');
@@ -153,17 +172,22 @@ function App() {
                   </tr>
                 </thead>
                 <tbody>
-                  {results.map((result, index) => (
-                    <tr key={index}>
-                      <td>{result.search_term}</td>
-                      <td>{result.NAME}</td>
-                      <td>{result.CITY}</td>
-                      <td>{result.STATE}</td>
-                      <td>${Number(result.TRANSACTION_AMT || 0).toLocaleString()}</td>
-                      <td>{result.TRANSACTION_DT}</td>
-                      <td>{result.CMTE_ID}</td>
-                    </tr>
-                  ))}
+                  {results.map((result, index) => {
+                    const [firstName, lastName] = result.NAME.split(' ');
+                    const bgColor = getPersonGroupColor(firstName, lastName, result.CITY);
+                    
+                    return (
+                      <tr key={index} style={{ backgroundColor: bgColor }}>
+                        <td>{result.search_term}</td>
+                        <td>{result.NAME}</td>
+                        <td>{result.CITY}</td>
+                        <td>{result.STATE}</td>
+                        <td>${Number(result.TRANSACTION_AMT || 0).toLocaleString()}</td>
+                        <td>{result.TRANSACTION_DT}</td>
+                        <td>{result.CMTE_ID}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -175,7 +199,7 @@ function App() {
             Enter names above to search for political contributions
           </div>
         )}
-        {results.length > 0 && <Charts results={results} />}
+        {results.length > 0 && <Charts results={results} getPersonGroupColor={getPersonGroupColor} />}
       </main>
     </div>
   );

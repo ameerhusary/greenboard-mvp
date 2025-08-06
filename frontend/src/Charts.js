@@ -23,8 +23,23 @@ ChartJS.register(
   Legend
 );
 
-const Charts = ({ results }) => {
+const Charts = ({ results, getPersonGroupColor }) => {
   if (!results || results.length === 0) return null;
+
+  // CHANGE 2: Update generatePersonColor function to use the consistent color function
+  const generatePersonColor = (personKey) => {
+    const parts = personKey.split(' (')[0].split(' '); // Extract "FirstName LastName" from "FirstName LastName (City, State)"
+    const city = personKey.split('(')[1]?.split(',')[0]; // Extract city
+    
+    if (parts.length >= 2 && city) {
+      const color = getPersonGroupColor(parts[0], parts[1], city);
+      // Convert rgba to rgb for border colors
+      return color.replace('rgba', 'rgb').replace(', 0.3)', ')');
+    }
+    
+    // Fallback color if parsing fails
+    return 'rgb(75, 192, 192)';
+  };
 
   // 1. Contributions over time (by person with city)
   const getTimelineData = () => {
@@ -67,13 +82,16 @@ const Charts = ({ results }) => {
       return colors[index % colors.length];
     };
     
-    const datasets = Object.keys(personData).map((person, index) => ({
-      label: person,
-      data: sortedDates.map(date => personData[person][date] || 0),
-      borderColor: generatePersonColor(person, index),
-      backgroundColor: generatePersonColor(person, index).replace('rgb', 'rgba').replace(')', ', 0.2)'),
-      tension: 0.1
-    }));
+    const datasets = Object.keys(personData).map((person, index) => {
+      const color = generatePersonColor(person, index) || 'rgb(75, 192, 192)';
+      return {
+        label: person,
+        data: sortedDates.map(date => personData[person][date] || 0),
+        borderColor: color,
+        backgroundColor: color.replace('rgb', 'rgba').replace(')', ', 0.2)'),
+        tension: 0.1
+      };
+    });
     
     return {
       labels: sortedDates.map(date => {
@@ -89,16 +107,18 @@ const Charts = ({ results }) => {
     const recipients = {};
     const contributorColors = {};
     
-    // First pass: collect all contributors and assign colors
+    // Assign colors using the consistent function
     const uniqueContributors = [...new Set(results.map(r => `${r.search_term} (${r.CITY}, ${r.STATE})`))];
-    const colors = [
-      'rgba(75, 192, 192, 0.8)', 'rgba(255, 99, 132, 0.8)', 'rgba(54, 162, 235, 0.8)', 
-      'rgba(255, 205, 86, 0.8)', 'rgba(153, 102, 255, 0.8)', 'rgba(255, 159, 64, 0.8)',
-      'rgba(199, 199, 199, 0.8)', 'rgba(83, 102, 146, 0.8)', 'rgba(255, 99, 255, 0.8)', 'rgba(99, 255, 132, 0.8)'
-    ];
     
-    uniqueContributors.forEach((contributor, index) => {
-      contributorColors[contributor] = colors[index % colors.length];
+    uniqueContributors.forEach((contributor) => {
+      const parts = contributor.split(' (')[0].split(' ');
+      const city = contributor.split('(')[1]?.split(',')[0];
+      
+      if (parts.length >= 2 && city) {
+        contributorColors[contributor] = getPersonGroupColor(parts[0], parts[1], city);
+      } else {
+        contributorColors[contributor] = 'rgba(75, 192, 192, 0.8)'; // fallback
+      }
     });
     
     // Group by recipient and track which contributors gave to each
