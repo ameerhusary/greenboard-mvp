@@ -35,6 +35,22 @@ class FECDataExtractor:
             df['LAST_NAME_RAW'] = name_split[0].str.strip().str.lower()
             df['FIRST_NAME_RAW'] = name_split[1].str.strip().str.lower()
             
+            # Add normalized columns for consistent person grouping
+            df['LAST_NAME_NORMALIZED'] = df['LAST_NAME_RAW']
+            # Normalize first names: remove titles, suffixes, and extra spaces
+            df['FIRST_NAME_NORMALIZED'] = (
+                df['FIRST_NAME_RAW']
+                .str.replace(r'\b(mr|mrs|ms|dr|jr|sr|ii|iii|iv|v)\b\.?', '', regex=True, case=False)
+                .str.replace(r'\s+', ' ', regex=True)  # Compress whitespace
+                .str.strip()
+                .str.split().str[0].str.lower()        # Take only the first name
+            )
+            
+            # Create person group ID for consistent coloring
+            df['PERSON_GROUP_ID'] = (df['FIRST_NAME_NORMALIZED'] + '_' + 
+                                   df['LAST_NAME_NORMALIZED'] + '_' + 
+                                   df['CITY'].fillna('').str.lower())
+
             # Create SQLite database
             conn = sqlite3.connect(db_path)
             df.to_sql('contributions', conn, if_exists='replace', index=False)
@@ -43,8 +59,12 @@ class FECDataExtractor:
             cursor = conn.cursor()
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_last_name ON contributions(LAST_NAME_RAW)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_first_name ON contributions(FIRST_NAME_RAW)')
-            cursor.execute('CREATE INDEX IF NOT EXISTS idx_city ON contributions(CITY)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_names ON contributions(LAST_NAME_RAW, FIRST_NAME_RAW)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_first_normalized ON contributions(FIRST_NAME_NORMALIZED)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_last_normalized ON contributions(LAST_NAME_NORMALIZED)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_city ON contributions(CITY)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_normalized_names ON contributions(FIRST_NAME_NORMALIZED, LAST_NAME_NORMALIZED)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_person_group ON contributions(PERSON_GROUP_ID)')
             conn.commit()
             conn.close()
             print(f"SQLite database created successfully at {db_path}")
