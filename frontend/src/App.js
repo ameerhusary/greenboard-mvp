@@ -13,23 +13,21 @@ function App() {
 
   // CHANGED: Use PERSON_GROUP_ID for consistent grouping of same person
   const getPersonGroupColor = (result) => {
-    // Use normalized person group ID if available, fallback to raw columns
     const personKey = result.PERSON_GROUP_ID || `${result.FIRST_NAME_RAW}_${result.LAST_NAME_RAW}_${result.CITY}_${result.STATE}`;
-    const colors = [
-      'rgba(75, 192, 192, 0.3)', 'rgba(255, 99, 132, 0.3)', 'rgba(54, 162, 235, 0.3)', 
-      'rgba(255, 205, 86, 0.3)', 'rgba(153, 102, 255, 0.3)', 'rgba(255, 159, 64, 0.3)',
-      'rgba(199, 199, 199, 0.3)', 'rgba(83, 102, 146, 0.3)', 'rgba(255, 99, 255, 0.3)', 'rgba(99, 255, 132, 0.3)'
-    ];
-    
-    // Simple hash function to consistently assign colors
+
+    // Hash the personKey
     let hash = 0;
     for (let i = 0; i < personKey.length; i++) {
       const char = personKey.charCodeAt(i);
       hash = ((hash << 5) - hash) + char;
-      hash = hash & hash; // Convert to 32-bit integer
+      hash |= 0; // Convert to 32-bit int
     }
-    
-    return colors[Math.abs(hash) % colors.length];
+
+    // NEW: use hash to generate a unique HSL color
+    const hue = Math.abs(hash) % 360;        // gives 0–359
+    const saturation = 70;                   // nicer default
+    const lightness = 60;                    // readable on white 
+    return `hsla(${hue}, ${saturation}%, ${lightness}%, 0.3)`;  // keep alpha similar to before
   };
 
   const handleSearch = async () => {

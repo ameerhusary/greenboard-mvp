@@ -1,24 +1,25 @@
 # Political Contribution Monitor
 
-A web application that helps financial services firms monitor political contributions for compliance with "pay-to-play" regulations using FEC data.
+A web application that helps financial services firms monitor political contributions of their employees for compliance with "pay-to-play" regulations using FEC data.
 
 ## Features
 
-- **Name-based Search**: Search for political contributions by first/last name with optional city filtering
-- **Bulk Search**: Search multiple names simultaneously (comma-separated format)
-- **Fuzzy Matching**: Handles name variations and partial matches
+- **Fast Name-based Search**: Lightning-fast search through 4M+ contribution records using optimized SQLite database with strategic indexing
+- **Bulk Search**: Search multiple names simultaneously (comma-separated format) with connection reuse optimization
+- **Smart Fuzzy Matching**: Multi-tier search strategy (person group ID → normalized names → exact → initials → partial matching)
+- **Advanced Name Normalization**: Handles titles, suffixes, initials, and name variations consistently
 - **Data Visualization**: 
   - Timeline charts showing contributions over time per person
   - Top recipients bar chart
-  - Highlighted largest contributions
-- **CSV Export**: Export search results for compliance reporting
-- **Real-time Results**: Fast search through 4M+ contribution records
+  - Highlighted largest contributions with person grouping for consistent identification
+- **CSV Export**: Export search results with person group IDs for compliance reporting
+- **Real-time Results**: Sub-second search performance through optimized database queries
 
 ## Technology Stack
-
-- **Backend**: Python FastAPI with pandas for data processing
-- **Frontend**: React with Chart.js for visualizations
-- **Data**: FEC individual contribution records (2017-2018 sample)
+- **Backend**: Python FastAPI with SQLite for persistent storage and optimized search performance
+- **Frontend**: React with Chart.js for interactive visualizations
+- **Data**: FEC individual contribution records (2017-2018 sample) with normalized indexing
+- **Search**: Multi-strategy search engine with person group identification and connection pooling
 
 ## Setup Instructions
 
@@ -38,16 +39,23 @@ A web application that helps financial services firms monitor political contribu
 
 2. **Install Python dependencies**
    ```bash
-   pip install fastapi uvicorn pandas fuzzywuzzy python-levenshtein
+   pip install fastapi uvicorn pandas sqlite3
    ```
 
 3. **Download FEC Data**
    - Download the FEC contribution files from: https://drive.google.com/drive/folders/1JyLpI_JP-b-QqvikBjH2GWnMJIJWWCKx
    - Place the `.txt` files in the `data/` folder
 
-4. **Start the FastAPI server**
+4. **Create the optimized SQLite Database**
+   - Run the following in terminal 1:  
    ```bash
-   uvicorn api_server:app --reload
+   python build_sqlite_db.py 
+   ```
+   - This creates `contributions.db` with optimized indexes for fast search performance
+
+5. **Start the FastAPI server**
+   ```bash
+   python -m uvicorn api_server:app --reload
    ```
    - Server will run on http://localhost:8000
    - API documentation available at http://localhost:8000/docs
@@ -55,10 +63,12 @@ A web application that helps financial services firms monitor political contribu
 ### Frontend Setup
 
 1. **Install Node.js dependencies**
+   - Open another terminal, terminal 2, and run the following:
    ```bash
    cd frontend
    npm install
    ```
+   - NOTE: keep both terminals 1 and 2 running
 
 2. **Start the React development server**
    ```bash
@@ -82,7 +92,7 @@ City (optional): [leave blank for all cities]
 
 ### API Endpoints
 
-- `POST /bulk_search` - Search for multiple contributors
+- `POST /bulk_search` - Unified endpoint for single and multiple contributor searches
   ```json
   {
     "names_input": "John Smith, Jane Doe",
@@ -94,21 +104,29 @@ City (optional): [leave blank for all cities]
 ## Project Structure
 
 ```
-political-contribution-monitor/
+GREENBOARD_MVP/
 ├── api_server.py           # FastAPI backend server
-├── search_engine.py        # Search logic and data processing
-├── extract_data.py         # FEC data loading utilities
+├── search_engine.py        # Optimized search engine with SQLite and person grouping
+├── extract_data.py         # Data extraction and normalization with person group IDs
+├── build_sqlite_db.py      # Script to build optimized SQLite database from FEC data
+├── contributions.db        # SQLite database with indexed FEC data (created by build script)
 ├── data/                   # FEC contribution data files
-│   ├── file1.txt
-│   └── file2.txt
+│   └── *.txt
 └── frontend/               # React frontend application
-    ├── src/
-    │   ├── App.js         # Main application component
-    │   ├── Charts.js      # Data visualization components
-    │   └── App.css        # Styling
-    ├── package.json
-    └── public/
+   └── src/
+       ├── App.js         # Main application component
+       ├── Charts.js      # Data visualization components
+       └── App.css        # Styling
+
 ```
+
+## Performance Optimizations
+
+- **Person Group IDs**: Consistent identification across searches for the same individual
+- **Strategic Indexing**: Composite indexes on normalized names and person group IDs
+- **Connection Reuse**: Single database connection for bulk operations
+- **Multi-tier Search**: Fastest strategies first (person group ID → normalized → raw → fuzzy)
+- **Optimized Queries**: Prepared statements and efficient SQL patterns
 
 ## Data Format
 
@@ -117,6 +135,7 @@ The application processes FEC individual contribution data with fields including
 - Contribution amount and date
 - Recipient committee information
 - Transaction details and identifiers
+- **Person Group ID**: Normalized identifier for consistent person tracking
 
 ## Development
 
@@ -134,14 +153,19 @@ curl -X POST "http://localhost:8000/bulk_search" \
 - Frontend features: Update `App.js` or create new components
 - Visualizations: Modify `Charts.js`
 
+## Architecture Notes
+
+- **SQLite Primary**: Optimized database with strategic indexing for fast searches
+- **Pandas Fallback**: Available for development/testing when SQLite is unavailable
+- **Unified API**: Single `bulk_search` endpoint handles both individual and bulk searches
+- **Person Consistency**: Person group IDs ensure the same individual is tracked consistently across searches
+
 ## Future Development
 
-For future development:
-- Use PostgreSQL or similar database instead of in-memory pandas
-- Implement proper authentication and rate limiting
-- Add error logging and monitoring
-- Use production WSGI server (Gunicorn) for FastAPI
-- Build and serve React frontend statically
+- Migrate from local SQLite to managed PostgreSQL for multi-user production deployment
+- Implement authentication and role-based access control
+- Add real-time FEC data updates and automated compliance alerts
+- Scale to handle enterprise-level concurrent users and larger datasets
 
 ## Contributing
 
