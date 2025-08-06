@@ -1,5 +1,4 @@
 from typing import Union
-from extract_data import FECDataExtractor
 import pandas as pd
 import sqlite3
 import os
@@ -9,38 +8,15 @@ class ContributionSearchEngine:
     def __init__(self, use_sqlite=True, db_path="contributions.db"):
         self.use_sqlite = use_sqlite
         self.db_path = db_path
-        self.extractor = FECDataExtractor()
         
-        if self.use_sqlite and os.path.exists(self.db_path):
-            self.conn = sqlite3.connect(self.db_path)
+        if self.use_sqlite:
+            assert os.path.exists(db_path), "Run python build_sqlite_db.py first."
         else:
             self.df = self.extractor.load_data()
-            if self.use_sqlite:
-                self._create_sqlite_db()
-            else:
-                # Pre-split NAME into FIRST/LAST for faster lookup
-                name_split = self.df['NAME'].fillna('').str.split(',', n=1, expand=True)
-                self.df['LAST_NAME_RAW'] = name_split[0].str.strip().str.lower()
-                self.df['FIRST_NAME_RAW'] = name_split[1].str.strip().str.lower()
-
-    def _create_sqlite_db(self):
-        self.conn = sqlite3.connect(self.db_path)
-        
-        # Add processed name columns
-        name_split = self.df['NAME'].fillna('').str.split(',', n=1, expand=True)
-        self.df['LAST_NAME_RAW'] = name_split[0].str.strip().str.lower()
-        self.df['FIRST_NAME_RAW'] = name_split[1].str.strip().str.lower()
-        
-        # Create table with indexes
-        self.df.to_sql('contributions', self.conn, if_exists='replace', index=False)
-        
-        # Create indexes for faster searches
-        cursor = self.conn.cursor()
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_last_name ON contributions(LAST_NAME_RAW)')
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_first_name ON contributions(FIRST_NAME_RAW)')
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_city ON contributions(CITY)')
-        cursor.execute('CREATE INDEX IF NOT EXISTS idx_names ON contributions(LAST_NAME_RAW, FIRST_NAME_RAW)')
-        self.conn.commit()
+            # Pre-split NAME into FIRST/LAST for faster lookup
+            name_split = self.df['NAME'].fillna('').str.split(',', n=1, expand=True)
+            self.df['LAST_NAME_RAW'] = name_split[0].str.strip().str.lower()
+            self.df['FIRST_NAME_RAW'] = name_split[1].str.strip().str.lower()
 
     def search(self, first_name: str, last_name: str, city: str = None, limit=10) -> pd.DataFrame:
         if not first_name.strip() or not last_name.strip():
@@ -65,6 +41,9 @@ class ContributionSearchEngine:
             city_filter = "AND UPPER(CITY) = UPPER(?)"
             params.append(city.strip())
         
+        # Open a new connection for each search
+        conn = sqlite3.connect(self.db_path)
+
         # Strategy 1: exact match
         query = f"""
         SELECT * FROM contributions 
@@ -72,7 +51,7 @@ class ContributionSearchEngine:
         LIMIT ?
         """
         params.append(limit)
-        result = pd.read_sql_query(query, self.conn, params=params)
+        result = pd.read_sql_query(query, conn, params=params)
         if not result.empty:
             return result
         
@@ -89,7 +68,7 @@ class ContributionSearchEngine:
             """
             params.insert(1, f"{initial_char}%")
             params.append(limit)
-            result = pd.read_sql_query(query, self.conn, params=params)
+            result = pd.read_sql_query(query, conn, params=params)
             if not result.empty:
                 return result
         
@@ -103,7 +82,7 @@ class ContributionSearchEngine:
         LIMIT ?
         """
         params.append(limit)
-        result = pd.read_sql_query(query, self.conn, params=params)
+        result = pd.read_sql_query(query, conn, params=params)
         if not result.empty:
             return result
         
@@ -117,7 +96,9 @@ class ContributionSearchEngine:
         LIMIT ?
         """
         params.append(limit)
-        return pd.read_sql_query(query, self.conn, params=params)
+        result = pd.read_sql_query(query, conn, params=params)
+        conn.close()
+        return result
 
     def _multi_strategy_search(self, df, first_name, last_name, limit):
         first_clean = first_name.strip().lower()
@@ -203,13 +184,8 @@ class ContributionSearchEngine:
         print(f"Exported {len(results)} results to {filename}")
         return True
 
-    def __del__(self):
-        if hasattr(self, 'conn') and self.use_sqlite:
-            self.conn.close()
-
-
-def main():
-    search_engine = ContributionSearchEngine()
+# def main():
+#     search_engine = ContributionSearchEngine()
     #______________Uncomment to test individual search_____________________________
     # results, summary = search_engine.bulk_search("paul paul, victor tate")
     # print(results[['NAME', 'CITY', 'STATE', 'TRANSACTION_DT', 'TRANSACTION_AMT']].head())
@@ -224,5 +200,5 @@ def main():
         # search_engine.export_to_csv(results, "contribution_results_2.csv")
         # print(results[['NAME', 'CITY', 'STATE', 'TRANSACTION_DT', 'TRANSACTION_AMT']])
 
-if __name__ == "__main__":
-    main()
+# if __name__ == "__main__":
+#     main()
